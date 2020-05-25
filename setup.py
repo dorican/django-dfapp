@@ -8,18 +8,19 @@ os.chdir(os.path.normpath(os.path.join(os.path.abspath(__file__), os.pardir)))
 
 setup(
     name='django-dfapp',
-    version=0.220,
+    version=1.00,
     packages=find_packages(),
     include_package_data=True,
     license='MIT License',
     description='A Django app that manages dependent fields',
     long_description=README,
-    url='https://github.com/dorican/recruit_agency',
+    url='https://github.com/dorican/django-dfapp',
     author='Vasily Romanov',
     author_email='dorican@yandex.ru',
     classifiers=[
         'Environment :: Web Environment',
         'Framework :: Django',
+        'Framework :: Django :: 2.0',
         'Framework :: Django :: 3.0',
         'Intended Audience :: Developers',
         'License :: OSI Approved :: MIT License',

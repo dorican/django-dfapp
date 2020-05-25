@@ -13,7 +13,7 @@ Add "dfapp" to your INSTALLED_APPS setting like this:
         'dfapp',
     ]
 
-Сreate your own form inherited from "DependentFieldsMixin":
+Create your own form inherited from "DependentFieldsMixin":
 ::
 
     from dfapp.mixins import DependentFieldsMixin
