@@ -6,7 +6,7 @@ from django.contrib.admin.options import get_content_type_for_model
 
 
 class MixinSelectWidget(Select):
-    template_name = 'mainapp/widgets/front_select.html'
+    template_name = 'dfapp/widgets/front_select.html'
 
 
 class DependentFieldsMixin():
