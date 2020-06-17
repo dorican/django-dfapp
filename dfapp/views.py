@@ -41,11 +41,9 @@ class RenderFormView(FormView):
 
     def render_to_response(self, context, **response_kwargs):
         form = context['form']
-        form.built_dependencies_form()
-        data = {'form': form.form_to_dict()}
-        return self.response_class(data)
+        return self.response_class(form.return_changed())
 
     def get_prefix(self):
         # breakpoint()
-        self.prefix = self.request.POST.get('prefix') if self.request.POST.get('prefix') else None
+        self.prefix = self.request.POST.get('prefix')
         return super().get_prefix()

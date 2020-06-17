@@ -1,4 +1,4 @@
-from django.db import models
+from django.db.models import Q
 from django.db.models.fields import BLANK_CHOICE_DASH
 from django.forms.models import apply_limit_choices_to_to_formfield
 from django.forms.widgets import Select
@@ -6,16 +6,7 @@ from django.contrib.admin.options import get_content_type_for_model
 
 
 class MixinSelectWidget(Select):
-    template_name = 'dfapp/widgets/front_select.html'
-
-
-class MixinQuerySet(models.QuerySet):
-    def queryset_filter(self, **kwargs):
-        return self.filter(**kwargs)
-
-
-class MixinManager(models.Manager):
-    _queryset_class = MixinQuerySet
+    template_name = 'formapp/widgets/front_select.html'
 
 
 class DependentFieldsMixin():
@@ -23,137 +14,91 @@ class DependentFieldsMixin():
     In this mixin is main logic this django application
     """
     data_url = None
-    remote_parent_field = None
-    linear_dependencies = None
-    independent_dependencies = None
+    dependencies = None
+    attrs_dict = {'onchange': 'update_form(this)', 'style': 'visibility: visible'}
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        dependencies = self.get_dependencies()
-        if dependencies:
-            count_checker, counter = len(self.linear_dependencies), 0
-        keys = []
-        attrs_dict = {'onchange': 'update_form(this)', 'data-url': f'{self.data_url}{get_content_type_for_model(self._meta.model).pk}/'}
-        if self.field_checker(dependencies):
-            for parent_name, childs in dependencies.items():
-                keys.append(parent_name)
-                if counter < count_checker:
-                    attrs_dict['data-name'] = parent_name
-                    for item in self._meta.model._meta.get_field(parent_name).target_field.model._meta.fields:
-                        if item.is_relation:
-                            self.remote_parent_field = item.name
-                            self.fields[parent_name].limit_choices_to = {f'{self.remote_parent_field}__isnull': True}
-                            apply_limit_choices_to_to_formfield(self.fields[parent_name])
-                else:
-                    attrs_dict = {'style': 'visibility: hidden'}
-                self.update_field_widget(parent_name, attrs_dict)
-                attrs_dict['style'] = 'visibility: hidden'
-                for child in childs:
-                    if child not in keys:
-                        self.update_field_widget(child, attrs_dict)
-                counter += 1
+    def _html_output(self, *args, **kwargs):
+        """
+        Hide fields and update field choices
+        """
+        dependencies = self.dependencies
+        self.attrs_dict['data-url'] = f'{self.data_url}{get_content_type_for_model(self._meta.model).pk}/'
+        dependencies_parent_pipe = (name for name, val in dependencies.items() if len(dependencies[name].get('parent')) == 0)
+        for name in dependencies_parent_pipe:
+            self.attrs_dict['data-name'] = name
+            self.update_field_widget(name, self.attrs_dict)
+        dependencies_childs_pipe = ((name, val.get('parent')[0]) for name, val in self.dependencies.items() if len(val.get('parent')) > 0)
+        for name, parent in dependencies_childs_pipe:
+            self.update_field_widget(name, {'style': 'visibility: hidden'})
+            formfield = self.fields[name]
+            formfield.limit_choices_to = {parent: self[parent].value() or 0}
+            apply_limit_choices_to_to_formfield(formfield)
+        return super()._html_output(*args, **kwargs)
 
-    def get_dependencies(self):
-        dependencies = self.linear_dependencies.copy() if self.linear_dependencies else None
-        if self.independent_dependencies:
-            dependencies.update(self.independent_dependencies)
-        return dependencies
+    def update_field_widget(self, name, attrs_dict):
+        """
+        Update field's widget with passed dict
+        """
+        widget = getattr(self.fields[name].widget, 'widget', self.fields[name].widget)
+        widget.attrs.update(attrs_dict)
 
-    def field_checker(self, dependencies):
+    def return_changed(self):
         """
-        Checking the form fields. If there is no field, then return False
+        Return to frontend only changed fields
         """
-        form_fields = self._meta.fields
-        if dependencies:
-            for key, f_list in dependencies.items():
-                if key not in form_fields:
-                    return False
-                for f in f_list:
-                    if f not in form_fields:
-                        return False
-            return True
+        def get_changed_fields(obj):
+            dependencies = obj.dependencies
+            ind_list = [field for field in dependencies if dependencies[field].get('parent') and not dependencies[field].get('key_parent')]
+            sequence = dependencies[obj.data.get('active_field')].get('childs') if type(obj.data.get('active_field')) == str else None
+            lin_list = []
+            if sequence:
+                lin_list.append(sequence[0])
+                idx = 1
+                while len(sequence) > idx and obj[lin_list[-1]].value():
+                    lin_list.append(sequence[idx])
+                    idx += 1
+            _list = ind_list + lin_list
+            self.built_choices(dependencies, ind_list, lin_list)
+            self.update_widget_changed_fields(_list)
+            return _list
+        return {self[item].auto_id: f'{self[item]}' for item in get_changed_fields(self)}
 
-    def update_field_widget(self, field_name, style):
+    def built_choices(self, dependencies, ind_list, lin_list):
         """
-        Update widget form's field
+        Update field choices with passed data
         """
-        widget = getattr(self.fields[field_name].widget, 'widget', self.fields[field_name].widget)
-        widget.attrs.update(style)
+        path_to_key_parent, key_parent = self.data.get('active_field'), self.data.get('active_field')
+        if lin_list:
+            for name in lin_list:
+                parent = dependencies[name].get('parent')[0]
+                formfield = self.fields[name]
+                self.fields[name].limit_choices_to = {parent: self[parent].value() or 0, path_to_key_parent: self[key_parent].value() or 0}
+                apply_limit_choices_to_to_formfield(formfield)
+                path_to_key_parent = name + '__' + path_to_key_parent
+        if ind_list:
+            for name in ind_list:
+                formfield = self.fields[name]
+                formfield.choices = self.get_field_choices(formfield, dependencies[name].get('parent'))
 
-    def get_changed_fields(self):
+    def get_field_choices(self, formfield, childs):
         """
-        Get fields to need to update
+        Get choices for received formfield
         """
-        data = self.data
-        control_field = self.data.get('active_field')
-        linear_dependencies, independent_dependencies = self.linear_dependencies, self.independent_dependencies
-        list_fields_to_change = []
-        for parent_name, childs in linear_dependencies.items():
-            if control_field == parent_name:
-                list_fields_to_change.append(childs[0])
-            elif control_field == childs[len(childs) - 1]:
-                break
-            elif control_field in childs:
-                list_fields_to_change.append(childs[childs.index(control_field) + 1])
-            for child in childs:
-                if data.get(self.add_prefix(child)) and child not in list_fields_to_change and child != control_field:
-                    list_fields_to_change.append(child)
-        if independent_dependencies:
-            list_fields_to_change += independent_dependencies.keys()
-        return list_fields_to_change
-
-    def form_to_dict(self):
-        """
-        Create dict. Key is form's field name with id, value is rendered form's field
-        """
-        template = 'id_{prefix}-{{}}'.format(**vars(self)).format if self.prefix else 'id_{}'.format
-        return {template(item): f'{self[item]}' for item in self.get_changed_fields()}
-
-    def built_dependencies_form(self):
-        """
-        Build dependencies before rendering form
-        """
-        data = self.data
-        dependencies = self.get_dependencies()
-        if dependencies:
-            count_checker, counter = len(self.linear_dependencies), 0
-        for parent_name, childs in dependencies.items():
-            if counter < count_checker:
-                checker = True
-                for child in childs:
-                    attrs_dict = {'onchange': 'update_form(this)', 'data-url': f'{self.data_url}{get_content_type_for_model(self._meta.model).pk}/', 'data-name': f'{child}'}
-                    child_field = self.fields[child]
-                    id_parent = data.get(self.add_prefix(parent_name)) if data.get(self.add_prefix(parent_name)) and checker else None
-                    if self.remote_parent_field:
-                        query = {self.remote_parent_field: id_parent}
-                        child_field.limit_choices_to = {self.remote_parent_field: id_parent, f'{self.remote_parent_field}__isnull': False}
-                    else:
-                        query = {parent_name: id_parent}
-                        child_field.limit_choices_to = {parent_name: id_parent}
-                    apply_limit_choices_to_to_formfield(child_field)
-                    attrs_dict['style'] = 'visibility: visible'
-                    if len(child_field.choices) > 1 and checker:
-                        self.update_field_widget(child, attrs_dict)
-                    checker = self.fields[child].queryset.queryset_filter(pk=data.get(self.add_prefix(child)) or 0, **query).exists()
-                    parent_name = child
-            else:
-                attrs_dict = {'style': 'visibility: visible'}
-                parent_field = self.fields[parent_name]
-                parent_field.choices = self.get_independent_choices(parent_name, childs)
-                if len(parent_field.choices) > 1:
-                    self.update_field_widget(parent_name, attrs_dict)
-            counter += 1
-
-    def get_independent_choices(self, parent_name, childs):
-        """
-        Get independent choices for parent field
-        """
-        field_choices = []
+        formfield_queryset = formfield.queryset
+        field_choices = BLANK_CHOICE_DASH
         for index, child in enumerate(childs):
-            id_child_field = self.data.get(self.add_prefix(child))
-            if id_child_field in [str(item.pk) for item in self.fields[child].queryset]:
-                queryset_query = {child: id_child_field}
-                queryset_query.update({f'{item}__isnull': True for item in childs[index + 1:]})
-                item_choices = tuple(self.fields[parent_name].queryset.queryset_filter(**queryset_query).values_list('id', 'title'))
-                field_choices = field_choices + [(f'{self.fields[child].queryset.queryset_filter(id=id_child_field).first()} ({len(item_choices)})', (item_choices))]
-        return BLANK_CHOICE_DASH + field_choices
+            if self.fields[child].queryset.filter(id=self[child].value() or 0).exists():
+                query = dict(list({child: self[child].value()}.items()) + list({f'{item}__isnull': True for item in childs[index + 1:]}.items()))
+                item_choices = tuple(formfield_queryset.filter(Q(**query)).values_list('id', 'title'))
+                field_choices = field_choices + [(f'{self.fields[child].queryset.filter(id=self[child].value()).first()} ({len(item_choices)})', (item_choices))]
+        return field_choices
+
+    def update_widget_changed_fields(self, seq):
+        """
+        If field choices more than one than field is displayed
+        """
+        seq_choices_pipe = (name for name in seq if len(self.fields[name].choices) > 1)
+        for name in seq_choices_pipe:
+            self.attrs_dict["data-name"] = name
+            self.update_field_widget(name, self.attrs_dict)
+        list(self.update_field_widget(name, {'style': 'visibility: hidden'}) for name in seq if len(self.fields[name].choices) == 1)
