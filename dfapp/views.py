@@ -31,7 +31,6 @@ class RenderFormView(FormView):
     success_url = '/'
 
     def get_form_class(self):
-        # breakpoint()
         if 'admin' in self.request.META.get('HTTP_REFERER'):
             self.form_class = (site._registry.get(self.model) or admin.ModelAdmin(self.model, site)).get_form(self.request)
         return super().get_form_class()
@@ -44,6 +43,5 @@ class RenderFormView(FormView):
         return self.response_class(form.return_changed())
 
     def get_prefix(self):
-        # breakpoint()
         self.prefix = self.request.POST.get('prefix')
         return super().get_prefix()
