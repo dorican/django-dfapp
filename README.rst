@@ -1,7 +1,7 @@
 This application make more simple to input the data in forms that use dependent fields
 and works with linear dependence and when one field depends on several fields.
 
-Developed in association with `WinePad GmbH <https://www.winepad.at/>`_.
+Developed in association with `WinePad GmbH <https://www.winepad.at/>`_. Developer `Vasily Romanov <https://github.com/dorican>`_
 
 How to use on frontend
 ----------------------
