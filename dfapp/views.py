@@ -1,9 +1,12 @@
-from django.http import JsonResponse
-from django.views.generic.edit import FormView
-from django.contrib.admin.sites import site
-from django.contrib.contenttypes.models import ContentType
+from django.shortcuts import render
+from django.views.generic.edit import CreateView, FormView
+from mainapp.forms import UpdateFrontendForm
 from django.views.generic import DetailView
+from django.contrib.contenttypes.models import ContentType
+from django.http import JsonResponse
+from django.contrib.admin.sites import site
 from django.contrib import admin
+from django.forms import formset_factory
 
 
 class CheckCTView(DetailView):
@@ -47,3 +50,19 @@ class RenderFormView(FormView):
         # breakpoint()
         self.prefix = self.request.POST.get('prefix')
         return super().get_prefix()
+
+
+class FrontendFormView(CheckCTView):
+    # form_class = UpdateMetaFrontendForm
+    form_class = UpdateFrontendForm
+
+
+class IndexPageView(CreateView):
+    form_class = UpdateFrontendForm
+    template_name = 'base.html'
+    success_url = '/'
+
+    # def get_context_data(self, **kwargs):
+    #     FormSet = formset_factory(UpdateFrontendForm, extra=1)
+    #     kwargs['formset'] = FormSet()
+    #     return super().get_context_data(**kwargs)

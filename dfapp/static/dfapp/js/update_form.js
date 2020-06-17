@@ -16,8 +16,10 @@ function update_form(obj) {
             if (this.status && this.status === 200) {
                 // handle a successful response
                 console.log('200: Ok');
-                const form = this.response.form;
+                console.log(this.response);
+                const form = this.response;
                 for (var key in form) {
+                    // console.log(document.getElementById(`${key}`));
                     document.getElementById(`${key}`).parentElement.innerHTML = form[key];
                 }
             } else {
